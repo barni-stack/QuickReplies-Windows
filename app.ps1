@@ -1,7 +1,15 @@
-﻿$mutex = New-Object Threading.Mutex($false,'Local\QuickRepliesDesktop')
-try { $owned = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $owned = $true }
-if (!$owned) { Add-Type -AssemblyName System.Windows.Forms; [void][Windows.Forms.MessageBox]::Show('Программа уже открыта.','Быстрые ответы'); return }
+﻿$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Windows.Forms
+$instanceLock = $null
 try {
+$lockDir = Join-Path $env:LOCALAPPDATA 'QuickReplies'
+[void][IO.Directory]::CreateDirectory($lockDir)
+try {
+    $instanceLock = [IO.File]::Open((Join-Path $lockDir 'instance.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+} catch [IO.IOException] {
+    [void][Windows.Forms.MessageBox]::Show('Другая копия программы ещё работает. Закройте её окно или завершите процесс Windows PowerShell, запущенный для Быстрых ответов.','Быстрые ответы')
+    return
+}
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -182,4 +190,8 @@ Refresh-List
 $f.Add_Shown({ $q.Select() })
 [void]$f.ShowDialog()
 
-} finally { $mutex.ReleaseMutex(); $mutex.Dispose() }
+} catch {
+    [void][Windows.Forms.MessageBox]::Show("Ошибка запуска: $($_.Exception.Message)`r`nСтрока: $($_.InvocationInfo.ScriptLineNumber)",'Быстрые ответы')
+} finally {
+    if ($instanceLock) { $instanceLock.Dispose() }
+}
